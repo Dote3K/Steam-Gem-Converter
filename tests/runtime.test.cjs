@@ -79,5 +79,17 @@ async function until(send, predicate) {
   const failed = runtime({ fetch: async () => ({ ok: false, status: 429 }) });
   await failed('SGC_LOAD_INVENTORY');
   assert.equal((await until(failed, s => s.inventory.status === 'error')).inventory.error.includes('429'), true);
+  const requested = [];
+  const paged = runtime({ fetch: async url => {
+    const cursor = new URL(url).searchParams.get('start_assetid');
+    requested.push(cursor);
+    return jsonResponse(cursor ? inventoryPage(['2', '3']) : { ...inventoryPage(['1', '2']), more_items: 1, last_assetid: '2' });
+  } });
+  await paged('SGC_LOAD_INVENTORY');
+  assert.equal((await until(paged, s => s.inventory.status === 'loaded')).inventory.totalCount, 3);
+  assert.deepEqual(requested, [null, '2']);
+  const badCursor = runtime({ fetch: async () => jsonResponse({ ...inventoryPage(), more_items: 1, last_assetid: '2' }) });
+  await badCursor('SGC_LOAD_INVENTORY');
+  assert.equal((await until(badCursor, s => s.inventory.status === 'error')).inventory.error.includes('cursor'), true);
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
