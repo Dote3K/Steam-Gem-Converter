@@ -2,7 +2,8 @@
   'use strict';
   const state = {
     page: null,
-    inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [] }
+    inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
+    selection: { appId: null }
   };
 
   async function getPage() {
@@ -38,6 +39,17 @@
     return state.page;
   }
 
+  function getCandidates() {
+    return state.inventory.gemmableItems.filter(item => item.gooAppId === state.selection.appId);
+  }
+
+  function rebuildSelection() {
+    state.inventory.games = SGC.inventory.games(state.inventory.gemmableItems);
+    if (!state.inventory.games.some(game => game.appId === state.selection.appId)) {
+      state.selection.appId = state.inventory.games[0]?.appId || null;
+    }
+  }
+
   function snapshot() {
     return {
       page: { ready: Boolean(state.page), steamId: state.page?.steamId },
@@ -45,8 +57,11 @@
         status: state.inventory.status,
         error: state.inventory.error,
         totalCount: state.inventory.allItems.length,
-        gemmableCount: state.inventory.gemmableItems.length
-      }
+        gemmableCount: state.inventory.gemmableItems.length,
+        games: state.inventory.games
+      },
+      selection: { ...state.selection },
+      plan: { candidateCount: getCandidates().length }
     };
   }
 
@@ -58,6 +73,7 @@
       state.inventory.allItems = items;
       state.inventory.gemmableItems = items.filter(SGC.inventory.canTurnIntoGems);
       state.inventory.status = 'loaded';
+      rebuildSelection();
     } catch (error) {
       state.inventory.status = 'error';
       state.inventory.error = error.message;
@@ -73,9 +89,19 @@
         return snapshot();
       case 'SGC_LOAD_INVENTORY':
         if (state.inventory.status === 'loading') throw new Error('Inventory is already loading.');
-        state.inventory = { status: 'loading', error: null, allItems: [], gemmableItems: [] };
+        state.inventory = { status: 'loading', error: null, allItems: [], gemmableItems: [], games: [] };
         void loadInventory();
         return snapshot();
+      case 'SGC_SET_SELECTION': {
+        if (state.inventory.status !== 'loaded') throw new Error('Load your inventory first.');
+        const selection = message.selection;
+        if (!selection || Object.keys(selection).some(key => key !== 'appId') ||
+            !Number.isSafeInteger(selection.appId) || !state.inventory.games.some(game => game.appId === selection.appId)) {
+          throw new Error('Select a valid game.');
+        }
+        state.selection.appId = selection.appId;
+        return snapshot();
+      }
       default:
         throw new Error('Unknown command.');
     }

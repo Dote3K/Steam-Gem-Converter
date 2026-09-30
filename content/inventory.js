@@ -185,5 +185,22 @@ globalThis.SGC = {};
     });
   }
 
-  SGC.inventory = { join, canTurnIntoGems };
+  function games(items) {
+    const groups = new Map();
+    for (const item of items) {
+      if (!item.gooAppId) continue;
+      if (!groups.has(item.gooAppId)) groups.set(item.gooAppId, { appId: item.gooAppId, name: item.appName, count: 0, itemKeys: new Set(), typeKeys: new Set() });
+      const group = groups.get(item.gooAppId);
+      group.count++;
+      group.itemKeys.add(item.itemKey);
+      group.typeKeys.add(item.typeKey);
+      if (group.name === 'Unknown Game' && item.appName !== 'Unknown Game') group.name = item.appName;
+    }
+    return Array.from(groups.values(), group => ({
+      appId: group.appId, name: group.name, count: group.count,
+      uniqueItems: group.itemKeys.size, uniqueTypes: group.typeKeys.size
+    })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }
+
+  SGC.inventory = { join, canTurnIntoGems, games };
 })();

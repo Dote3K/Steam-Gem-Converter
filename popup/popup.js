@@ -8,11 +8,29 @@ async function send(type, payload = {}) {
   return response.snapshot;
 }
 
+function updateOptions(select, options, value) {
+  const key = JSON.stringify(options);
+  if (select.dataset.options !== key) {
+    select.replaceChildren(...options.map(option => {
+      const node = document.createElement('option');
+      node.value = option.value;
+      node.textContent = option.label;
+      return node;
+    }));
+    select.dataset.options = key;
+  }
+  select.value = value == null ? '' : String(value);
+}
+
 function render(snapshot) {
   const inventory = snapshot.inventory;
   status.textContent = inventory.error || (inventory.status === 'idle' ? 'Ready. Load your inventory to begin.' : `Inventory ${inventory.status}.`);
   document.querySelector('#load').disabled = inventory.status === 'loading';
   document.querySelector('#counts').textContent = `Inventory: ${inventory.totalCount} · Gemmable: ${inventory.gemmableCount}`;
+  const game = document.querySelector('#game');
+  updateOptions(game, inventory.games.map(g => ({ value: String(g.appId), label: `${g.name} · ${g.count} items` })), snapshot.selection.appId);
+  game.disabled = inventory.status !== 'loaded' || !inventory.games.length;
+  document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount}`;
 }
 
 async function refresh() {
@@ -34,6 +52,7 @@ async function command(type, payload = {}) {
 }
 
 document.querySelector('#load').addEventListener('click', () => void command('SGC_LOAD_INVENTORY'));
+document.querySelector('#game').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { appId: Number(event.target.value) } }));
 
 async function init() {
   try {

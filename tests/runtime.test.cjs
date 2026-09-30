@@ -30,7 +30,7 @@ function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId 
     vm.runInContext(fs.readFileSync(path.join(root, file), 'utf8'), context, { filename: file });
   }
   return (type, payload = {}) => new Promise(resolve => {
-    listener({ type, ...payload }, { id: 'test-extension', url: 'chrome-extension://test-extension/popup/popup.html' }, resolve);
+    listener({ type, ...payload }, { id: 'test-extension', url: 'chrome-extension://test-extension/popup/popup.html' }, response => resolve(JSON.parse(JSON.stringify(response))));
   });
 }
 function inventoryPage(ids = ['1', '2']) {
@@ -91,5 +91,10 @@ async function until(send, predicate) {
   const badCursor = runtime({ fetch: async () => jsonResponse({ ...inventoryPage(), more_items: 1, last_assetid: '2' }) });
   await badCursor('SGC_LOAD_INVENTORY');
   assert.equal((await until(badCursor, s => s.inventory.status === 'error')).inventory.error.includes('cursor'), true);
+  const grouped = (await paged('SGC_GET_SNAPSHOT')).snapshot;
+  assert.deepEqual(grouped.inventory.games.map(game => [game.appId, game.count]), [[440, 2], [570, 1]]);
+  assert.equal(grouped.plan.candidateCount, 2);
+  assert.equal((await paged('SGC_SET_SELECTION', { selection: { appId: 570 } })).snapshot.plan.candidateCount, 1);
+  assert.equal((await paged('SGC_SET_SELECTION', { selection: { appId: 999 } })).ok, false);
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
