@@ -124,5 +124,44 @@ async function until(send, predicate) {
   assert.equal((await types('SGC_SET_CONFIG', { config: { maxItems: 0 } })).ok, false);
   assert.equal((await types('SGC_SET_CONFIG', { config: { delayMs: -1 } })).ok, false);
   assert.equal((await types('SGC_SET_CONFIG', { config: { delayMs: 0.5 } })).ok, false);
+  let releaseGoo;
+  let gooRequests = 0;
+  const posts = [];
+  const conversion = runtime({ fetch: async (url, options) => {
+    const parsed = new URL(url);
+    assert.equal(parsed.origin, 'https://steamcommunity.com');
+    if (parsed.pathname.startsWith('/inventory/')) return jsonResponse(inventoryPage(['1', '2', '7']));
+    if (parsed.pathname.startsWith('/auction/')) {
+      gooRequests++;
+      if (gooRequests === 1) return new Promise(resolve => { releaseGoo = () => resolve({ ok: false, status: 429 }); });
+      return jsonResponse({ goo_value: 20, item_appid: 440 });
+    }
+    assert.equal(parsed.pathname, '/profiles/76561198000000000/ajaxgrindintogoo/');
+    assert.equal(options.method, 'POST');
+    assert.equal(options.credentials, 'include');
+    const body = Object.fromEntries(new URLSearchParams(options.body));
+    posts.push(body);
+    return jsonResponse({ success: body.assetid === '1' ? 0 : 1 });
+  } });
+  await conversion('SGC_LOAD_INVENTORY');
+  const before = await until(conversion, s => s.inventory.status === 'loaded');
+  assert.equal((await conversion('SGC_START_CONVERSION', { planId: before.plan.id })).ok, false);
+  assert.equal((await conversion('SGC_START_CONVERSION', { confirmed: true, planId: before.plan.id, url: 'https://example.com' })).ok, false);
+  const configured = (await conversion('SGC_SET_CONFIG', { config: { delayMs: 0, maxItems: 2 } })).snapshot;
+  assert.equal((await conversion('SGC_START_CONVERSION', { confirmed: true, planId: before.plan.id })).ok, false);
+  const started = await conversion('SGC_START_CONVERSION', { confirmed: true, planId: configured.plan.id });
+  assert.equal(started.snapshot.job.status, 'running');
+  assert.equal((await conversion('SGC_SET_CONFIG', { config: { maxItems: 3 } })).ok, false);
+  assert.equal((await conversion('SGC_LOAD_INVENTORY')).ok, false);
+  releaseGoo();
+  const finished = await until(conversion, s => s.job.status === 'completed');
+  assert.deepEqual([finished.job.total, finished.job.processed, finished.job.success, finished.job.failed], [2, 2, 1, 1]);
+  assert.equal(finished.inventory.totalCount, 2);
+  assert.deepEqual(posts, [{ sessionid: 'synthetic-session', appid: '440', assetid: '2', contextid: '6', goo_value_expected: '20' }]);
+  assert.equal(JSON.stringify(finished).includes('synthetic-session'), false);
+  await conversion('SGC_START_CONVERSION', { confirmed: true, planId: finished.plan.id });
+  const retried = await until(conversion, s => s.job.status === 'completed');
+  assert.deepEqual([retried.job.success, retried.job.failed, retried.inventory.totalCount], [1, 1, 1]);
+  assert.deepEqual(posts.map(post => post.assetid), ['2', '1', '7']);
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

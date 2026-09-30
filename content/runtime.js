@@ -4,7 +4,14 @@
     page: null,
     inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
     selection: { appId: null, filterEnabled: false, filterMode: 'item', filterKey: null },
-    config: { delayMs: 50, maxItems: 1000 }
+    config: { delayMs: 50, maxItems: 1000 },
+    planId: crypto.randomUUID(),
+    job: { status: 'idle', total: 0, processed: 0, success: 0, failed: 0, currentItem: null, error: null }
+  };
+  const commandFields = {
+    SGC_PING: [], SGC_GET_SNAPSHOT: [], SGC_LOAD_INVENTORY: [],
+    SGC_SET_SELECTION: ['selection'], SGC_SET_CONFIG: ['config'],
+    SGC_START_CONVERSION: ['confirmed', 'planId']
   };
 
   async function getPage() {
@@ -59,6 +66,10 @@
     if (!options.some(option => option.key === state.selection.filterKey)) state.selection.filterKey = options[0]?.key || null;
   }
 
+  function isRunning() {
+    return state.job.status === 'running';
+  }
+
   function validateConfig(config) {
     if (!Number.isInteger(config.delayMs) || config.delayMs < 0 || config.delayMs > 2147483647 ||
         (config.maxItems !== null && (!Number.isSafeInteger(config.maxItems) || config.maxItems < 1))) {
@@ -80,7 +91,8 @@
       selection: { ...state.selection },
       filterOptions: getFilterOptions(),
       config: { ...state.config },
-      plan: { candidateCount, plannedCount: Math.min(candidateCount, state.config.maxItems ?? Infinity) }
+      job: { ...state.job },
+      plan: { id: state.planId, candidateCount, plannedCount: Math.min(candidateCount, state.config.maxItems ?? Infinity) }
     };
   }
 
@@ -93,28 +105,69 @@
       state.inventory.gemmableItems = items.filter(SGC.inventory.canTurnIntoGems);
       state.inventory.status = 'loaded';
       rebuildSelection();
+      state.planId = crypto.randomUUID();
     } catch (error) {
       state.inventory.status = 'error';
       state.inventory.error = error.message;
     }
   }
 
+  async function runConvert(candidates, sessionId) {
+    const converted = new Set();
+    const job = state.job = {
+      status: 'running', total: candidates.length, processed: 0, success: 0,
+      failed: 0, currentItem: null, error: null,
+      startedAt: Date.now(), finishedAt: null
+    };
+    try {
+      for (const item of candidates) {
+        job.currentItem = item.itemName;
+        try {
+          const { gooValue, appId } = await SGC.api.getGooValue(item);
+          await SGC.api.grindIntoGoo(item, sessionId, gooValue, appId, state.page.profileBaseUrl);
+          job.success++;
+          converted.add(item.assetid);
+        } catch (error) {
+          job.failed++;
+          job.error = error.message;
+        }
+        job.processed++;
+        if (job.processed < job.total) await new Promise(resolve => setTimeout(resolve, state.config.delayMs));
+      }
+      job.status = 'completed';
+    } catch (error) {
+      job.status = 'failed';
+      job.error = error.message;
+    } finally {
+      job.currentItem = null;
+      job.finishedAt = Date.now();
+      if (converted.size) {
+        state.inventory.allItems = state.inventory.allItems.filter(item => !converted.has(item.assetid));
+        state.inventory.gemmableItems = state.inventory.gemmableItems.filter(item => !converted.has(item.assetid));
+        rebuildSelection();
+      }
+      state.planId = crypto.randomUUID();
+    }
+  }
+
   async function handle(message) {
-    if (!message || typeof message !== 'object') throw new Error('Invalid command.');
+    if (!message || typeof message !== 'object' || Array.isArray(message) || !Object.hasOwn(commandFields, message.type)) throw new Error('Invalid command.');
+    if (Object.keys(message).some(key => key !== 'type' && !commandFields[message.type].includes(key))) throw new Error('Invalid command payload.');
     switch (message.type) {
       case 'SGC_PING':
       case 'SGC_GET_SNAPSHOT':
         if (!state.page) await getPage();
         return snapshot();
       case 'SGC_LOAD_INVENTORY':
-        if (state.inventory.status === 'loading') throw new Error('Inventory is already loading.');
+        if (state.inventory.status === 'loading' || isRunning()) throw new Error('Wait for the current operation to finish.');
         state.inventory = { status: 'loading', error: null, allItems: [], gemmableItems: [], games: [] };
         void loadInventory();
         return snapshot();
       case 'SGC_SET_SELECTION': {
         if (state.inventory.status !== 'loaded') throw new Error('Load your inventory first.');
+        if (isRunning()) throw new Error('Wait for conversion to finish.');
         const patch = message.selection;
-        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['appId', 'filterEnabled', 'filterMode', 'filterKey'].includes(key))) throw new Error('Invalid selection.');
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch) || Object.keys(patch).some(key => !['appId', 'filterEnabled', 'filterMode', 'filterKey'].includes(key))) throw new Error('Invalid selection.');
         const selection = { ...state.selection, ...patch };
         if (!Number.isSafeInteger(selection.appId) || !state.inventory.games.some(game => game.appId === selection.appId) ||
             typeof selection.filterEnabled !== 'boolean' || !['item', 'type'].includes(selection.filterMode) ||
@@ -124,14 +177,27 @@
         if (selection.filterKey !== null && !options.some(option => option.key === selection.filterKey)) throw new Error('Select a valid item.');
         selection.filterKey ??= options[0]?.key || null;
         state.selection = selection;
+        state.planId = crypto.randomUUID();
         return snapshot();
       }
       case 'SGC_SET_CONFIG': {
+        if (isRunning()) throw new Error('Wait for conversion to finish.');
         const patch = message.config;
-        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['delayMs', 'maxItems'].includes(key))) throw new Error('Invalid settings.');
+        if (!patch || typeof patch !== 'object' || Array.isArray(patch) || Object.keys(patch).some(key => !['delayMs', 'maxItems'].includes(key))) throw new Error('Invalid settings.');
         const config = { ...state.config, ...patch };
         validateConfig(config);
         state.config = config;
+        state.planId = crypto.randomUUID();
+        return snapshot();
+      }
+      case 'SGC_START_CONVERSION': {
+        if (state.inventory.status !== 'loaded' || isRunning()) throw new Error('Load inventory and wait for the current operation to finish.');
+        if (message.confirmed !== true || typeof message.planId !== 'string' || message.planId !== state.planId) throw new Error('Review and confirm the current selection before converting.');
+        const candidates = getCandidates().slice(0, state.config.maxItems ?? Infinity);
+        if (!candidates.length) throw new Error('No matching items to convert.');
+        const sessionId = SGC.api.getSessionId();
+        state.planId = crypto.randomUUID();
+        void runConvert(candidates, sessionId);
         return snapshot();
       }
       default:

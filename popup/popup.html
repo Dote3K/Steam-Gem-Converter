@@ -24,7 +24,17 @@
       <label>Selection<select id="filter-value" disabled></select></label>
     </div>
     <p id="selection-count">Selected: 0</p>
+    <button id="convert" type="button" disabled>Convert</button>
     <p class="warning">Converting items into gems is permanent.</p>
   </main>
+  <dialog id="confirmation" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Convert items into gems?</h2>
+    <p class="warning">This action is permanent.</p>
+    <pre id="confirm-summary"></pre>
+    <form method="dialog">
+      <button type="submit" autofocus>Cancel</button>
+      <button id="confirm-convert" type="button">Convert items</button>
+    </form>
+  </dialog>
 </body>
 </html>

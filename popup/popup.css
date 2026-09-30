@@ -16,3 +16,7 @@ select { width: 100%; }
 .checkbox { display: flex; align-items: center; gap: 8px; }
 .settings { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 input[type="number"] { width: 100%; }
+dialog { width: 390px; max-width: calc(100vw - 24px); color: inherit; background: #0f172a; border: 1px solid #475569; border-radius: 10px; padding: 16px; }
+dialog::backdrop { background: #020617bb; }
+dialog h2 { font-size: 16px; margin: 0 0 12px; }
+pre { font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
