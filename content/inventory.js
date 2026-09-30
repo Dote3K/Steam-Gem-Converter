@@ -202,11 +202,13 @@ globalThis.SGC = {};
     })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }
 
-  function filterGroups(items) {
+  function filterGroups(items, mode) {
     const groups = new Map();
     for (const item of items) {
-      if (!groups.has(item.itemKey)) groups.set(item.itemKey, { key: item.itemKey, label: item.itemName, count: 0 });
-      groups.get(item.itemKey).count++;
+      const key = mode === 'type' ? item.typeKey : item.itemKey;
+      const label = mode === 'type' ? item.typeLabel : item.itemName;
+      if (!groups.has(key)) groups.set(key, { key, label, count: 0 });
+      groups.get(key).count++;
     }
     return Array.from(groups.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
   }

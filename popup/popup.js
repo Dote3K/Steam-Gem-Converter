@@ -36,6 +36,8 @@ function render(snapshot) {
   const filter = document.querySelector('#filter-value');
   updateOptions(filter, snapshot.filterOptions.map(option => ({ value: option.key, label: `${option.label} · ${option.count} items` })), snapshot.selection.filterKey);
   filter.disabled = game.disabled || !snapshot.selection.filterEnabled;
+  document.querySelector('#filter-mode').value = snapshot.selection.filterMode;
+  document.querySelector('#filter-mode').disabled = filter.disabled;
   document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount}`;
 }
 
@@ -61,6 +63,7 @@ document.querySelector('#load').addEventListener('click', () => void command('SG
 document.querySelector('#game').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { appId: Number(event.target.value) } }));
 document.querySelector('#filter-enabled').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterEnabled: event.target.checked } }));
 document.querySelector('#filter-value').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterKey: event.target.value } }));
+document.querySelector('#filter-mode').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterMode: event.target.value } }));
 
 async function init() {
   try {

@@ -101,5 +101,20 @@ async function until(send, predicate) {
   assert.equal(itemFilter.snapshot.plan.candidateCount, 2);
   assert.equal((await paged('SGC_SET_SELECTION', { selection: { filterKey: 'missing' } })).ok, false);
   assert.equal((await paged('SGC_GET_SNAPSHOT')).snapshot.selection.filterKey, '100_0');
+  const typePage = inventoryPage();
+  typePage.assets.push({ assetid: '5', classid: '300' }, { assetid: '6', classid: '101' });
+  typePage.descriptions.push(
+    { ...typePage.descriptions[0], classid: '300', name: 'Foil Card', type: 'Example Game Foil Trading Card', tags: [{ category: 'item_class', localized_tag_name: 'Trading Card' }] },
+    { ...typePage.descriptions[0], classid: '101', name: 'Different Card' }
+  );
+  const types = runtime({ fetch: async () => jsonResponse(typePage) });
+  await types('SGC_LOAD_INVENTORY');
+  await until(types, s => s.inventory.status === 'loaded');
+  assert.equal((await types('SGC_SET_SELECTION', { selection: { filterEnabled: true } })).snapshot.plan.candidateCount, 2);
+  const typeFilter = await types('SGC_SET_SELECTION', { selection: { filterMode: 'type' } });
+  assert.equal(typeFilter.snapshot.selection.filterKey, 'trading card');
+  assert.equal(typeFilter.snapshot.plan.candidateCount, 3);
+  assert.equal((await types('SGC_SET_SELECTION', { selection: { filterKey: 'foil trading card' } })).snapshot.plan.candidateCount, 1);
+  assert.equal((await types('SGC_SET_SELECTION', { selection: { filterMode: 'invalid' } })).ok, false);
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

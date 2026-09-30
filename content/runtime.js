@@ -3,7 +3,7 @@
   const state = {
     page: null,
     inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
-    selection: { appId: null, filterEnabled: false, filterKey: null }
+    selection: { appId: null, filterEnabled: false, filterMode: 'item', filterKey: null }
   };
 
   async function getPage() {
@@ -42,11 +42,11 @@
   function getCandidates() {
     return state.inventory.gemmableItems.filter(item =>
       item.gooAppId === state.selection.appId &&
-      (!state.selection.filterEnabled || item.itemKey === state.selection.filterKey));
+      (!state.selection.filterEnabled || (state.selection.filterMode === 'type' ? item.typeKey : item.itemKey) === state.selection.filterKey));
   }
 
   function getFilterOptions(selection = state.selection) {
-    return SGC.inventory.filterGroups(state.inventory.gemmableItems.filter(item => item.gooAppId === selection.appId));
+    return SGC.inventory.filterGroups(state.inventory.gemmableItems.filter(item => item.gooAppId === selection.appId), selection.filterMode);
   }
 
   function rebuildSelection() {
@@ -104,11 +104,12 @@
       case 'SGC_SET_SELECTION': {
         if (state.inventory.status !== 'loaded') throw new Error('Load your inventory first.');
         const patch = message.selection;
-        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['appId', 'filterEnabled', 'filterKey'].includes(key))) throw new Error('Invalid selection.');
+        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['appId', 'filterEnabled', 'filterMode', 'filterKey'].includes(key))) throw new Error('Invalid selection.');
         const selection = { ...state.selection, ...patch };
         if (!Number.isSafeInteger(selection.appId) || !state.inventory.games.some(game => game.appId === selection.appId) ||
-            typeof selection.filterEnabled !== 'boolean' || (selection.filterKey !== null && typeof selection.filterKey !== 'string')) throw new Error('Invalid selection.');
-        if (selection.appId !== state.selection.appId && !('filterKey' in patch)) selection.filterKey = null;
+            typeof selection.filterEnabled !== 'boolean' || !['item', 'type'].includes(selection.filterMode) ||
+            (selection.filterKey !== null && typeof selection.filterKey !== 'string')) throw new Error('Invalid selection.');
+        if ((selection.appId !== state.selection.appId || selection.filterMode !== state.selection.filterMode) && !('filterKey' in patch)) selection.filterKey = null;
         const options = getFilterOptions(selection);
         if (selection.filterKey !== null && !options.some(option => option.key === selection.filterKey)) throw new Error('Select a valid item.');
         selection.filterKey ??= options[0]?.key || null;
