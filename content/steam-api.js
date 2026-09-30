@@ -18,14 +18,16 @@
     }
   }
 
-  async function fetchInventory(steamId) {
+  async function fetchInventory(steamId, onPage) {
     const url = new URL(`/inventory/${steamId}/753/6`, 'https://steamcommunity.com');
     url.searchParams.set('l', 'english');
     url.searchParams.set('count', '2000');
     const assets = new Map();
     const descriptions = [];
     const cursors = new Set();
+    let pageNumber = 0;
     while (true) {
+      onPage(++pageNumber);
       const data = await readJson(url.toString());
       if (data?.success !== 1 && data?.success !== true) throw new Error('Steam could not load this inventory. Check login and inventory privacy.');
       if (!Array.isArray(data.assets || []) || !Array.isArray(data.descriptions || [])) throw new Error('Steam returned invalid inventory data.');

@@ -11,6 +11,7 @@
   <header><h1>Steam Gem Converter</h1></header>
   <main>
     <p id="status" role="status">Open your Steam Community inventory to convert items into gems.</p>
+    <p id="error" class="warning" role="alert" hidden></p>
     <button id="load" type="button" disabled>Load inventory</button>
     <p id="counts">Inventory: 0 · Gemmable: 0</p>
     <label>Game<select id="game" disabled><option value="">Load inventory first</option></select></label>
@@ -26,6 +27,12 @@
     <p id="selection-count">Selected: 0</p>
     <button id="convert" type="button" disabled>Convert</button>
     <button id="stop" type="button" disabled>Stop</button>
+    <progress id="progress" value="0" max="1" aria-label="Conversion progress"></progress>
+    <p id="progress-text">Idle</p>
+    <section aria-labelledby="activity-title">
+      <div class="activity-heading"><h2 id="activity-title">Activity</h2><button id="clear-logs" type="button" disabled>Clear</button></div>
+      <ol id="logs" aria-label="Activity log"></ol>
+    </section>
     <p class="warning">Converting items into gems is permanent.</p>
   </main>
   <dialog id="confirmation" aria-labelledby="confirm-title">

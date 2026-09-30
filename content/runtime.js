@@ -2,18 +2,24 @@
   'use strict';
   const state = {
     page: null,
-    inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
+    inventory: { status: 'idle', error: null, page: 0, allItems: [], gemmableItems: [], games: [] },
     selection: { appId: null, filterEnabled: false, filterMode: 'item', filterKey: null },
     config: { delayMs: 50, maxItems: 1000 },
     planId: crypto.randomUUID(),
-    job: { status: 'idle', total: 0, processed: 0, success: 0, failed: 0, currentItem: null, error: null }
+    job: { status: 'idle', total: 0, processed: 0, success: 0, failed: 0, currentItem: null, error: null, startedAt: null, finishedAt: null, cancelRequested: false },
+    logs: []
   };
   const commandFields = {
     SGC_PING: [], SGC_GET_SNAPSHOT: [], SGC_LOAD_INVENTORY: [],
     SGC_SET_SELECTION: ['selection'], SGC_SET_CONFIG: ['config'],
-    SGC_START_CONVERSION: ['confirmed', 'planId'], SGC_CANCEL_CONVERSION: []
+    SGC_START_CONVERSION: ['confirmed', 'planId'], SGC_CANCEL_CONVERSION: [], SGC_CLEAR_LOGS: []
   };
   let endDelay = null;
+
+  function log(level, message) {
+    state.logs.push({ timestamp: Date.now(), level, message });
+    if (state.logs.length > 200) state.logs.shift();
+  }
 
   async function getPage() {
     const match = location.pathname.match(/^\/(profiles\/\d{17}|id\/[^/]+)\/inventory\/?$/);
@@ -85,6 +91,7 @@
       inventory: {
         status: state.inventory.status,
         error: state.inventory.error,
+        page: state.inventory.page,
         totalCount: state.inventory.allItems.length,
         gemmableCount: state.inventory.gemmableItems.length,
         games: state.inventory.games
@@ -93,7 +100,12 @@
       filterOptions: getFilterOptions(),
       config: { ...state.config },
       job: { ...state.job },
-      plan: { id: state.planId, candidateCount, plannedCount: Math.min(candidateCount, state.config.maxItems ?? Infinity) }
+      logs: state.logs,
+      plan: {
+        id: state.planId,
+        selectedCount: state.inventory.games.find(game => game.appId === state.selection.appId)?.count || 0,
+        candidateCount, plannedCount: Math.min(candidateCount, state.config.maxItems ?? Infinity)
+      }
     };
   }
 
@@ -101,15 +113,17 @@
     try {
       const page = state.page || await getPage();
       SGC.api.getSessionId();
-      const items = await SGC.api.fetchInventory(page.steamId);
+      const items = await SGC.api.fetchInventory(page.steamId, page => { state.inventory.page = page; });
       state.inventory.allItems = items;
       state.inventory.gemmableItems = items.filter(SGC.inventory.canTurnIntoGems);
       state.inventory.status = 'loaded';
       rebuildSelection();
       state.planId = crypto.randomUUID();
+      log('success', `Inventory loaded: ${items.length} items, ${state.inventory.gemmableItems.length} gemmable.`);
     } catch (error) {
       state.inventory.status = 'error';
       state.inventory.error = error.message;
+      log('error', error.message);
     }
   }
 
@@ -120,6 +134,7 @@
       failed: 0, currentItem: null, error: null,
       startedAt: Date.now(), finishedAt: null, cancelRequested: false
     };
+    log('info', `Started converting ${candidates.length} items.`);
     try {
       for (const item of candidates) {
         if (job.cancelRequested) break;
@@ -129,9 +144,11 @@
           await SGC.api.grindIntoGoo(item, sessionId, gooValue, appId, state.page.profileBaseUrl);
           job.success++;
           converted.add(item.assetid);
+          log('success', `OK ${job.processed + 1}/${job.total} | ${item.itemName} → ${gooValue} gems`);
         } catch (error) {
           job.failed++;
           job.error = error.message;
+          log('error', `FAIL ${job.processed + 1}/${job.total} | ${item.itemName} → ${error.message}`);
         }
         job.processed++;
         job.currentItem = null;
@@ -147,6 +164,7 @@
     } catch (error) {
       job.status = 'failed';
       job.error = error.message;
+      log('error', error.message);
     } finally {
       job.currentItem = null;
       job.finishedAt = Date.now();
@@ -156,6 +174,7 @@
         rebuildSelection();
       }
       state.planId = crypto.randomUUID();
+      log(job.failed || job.cancelRequested ? 'warn' : 'success', `${job.cancelRequested ? 'Stopped' : 'Finished'}. Success: ${job.success}, failed: ${job.failed}.`);
     }
   }
 
@@ -169,7 +188,8 @@
         return snapshot();
       case 'SGC_LOAD_INVENTORY':
         if (state.inventory.status === 'loading' || isRunning()) throw new Error('Wait for the current operation to finish.');
-        state.inventory = { status: 'loading', error: null, allItems: [], gemmableItems: [], games: [] };
+        state.inventory = { status: 'loading', error: null, page: 0, allItems: [], gemmableItems: [], games: [] };
+        log('info', 'Started loading the full inventory.');
         void loadInventory();
         return snapshot();
       case 'SGC_SET_SELECTION': {
@@ -214,6 +234,10 @@
         state.job.cancelRequested = true;
         state.job.status = 'stopping';
         endDelay?.();
+        log('warn', 'Stop requested. The current item will finish first.');
+        return snapshot();
+      case 'SGC_CLEAR_LOGS':
+        state.logs = [];
         return snapshot();
       default:
         throw new Error('Unknown command.');

@@ -191,5 +191,18 @@ async function until(send, predicate) {
   await until(stoppable, s => s.job.processed === 1);
   await stoppable('SGC_CANCEL_CONVERSION');
   assert.equal((await until(stoppable, s => s.job.status === 'completed')).job.processed, 1);
-  console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
+  const many = runtime({ fetch: async url => jsonResponse(url.includes('/inventory/')
+    ? inventoryPage(Array.from({ length: 210 }, (_, i) => String(i + 10)))
+    : url.includes('/auction/') ? { goo_value: 20 } : { success: 1 }) });
+  await many('SGC_LOAD_INVENTORY');
+  await until(many, s => s.inventory.status === 'loaded');
+  const manyPlan = (await many('SGC_SET_CONFIG', { config: { delayMs: 0, maxItems: null } })).snapshot;
+  await many('SGC_START_CONVERSION', { confirmed: true, planId: manyPlan.plan.id });
+  const manyDone = await until(many, s => s.job.status === 'completed');
+  assert.equal(manyDone.job.processed, 210);
+  assert.equal(manyDone.logs.length, 200);
+  assert.equal(manyDone.logs[0].level, 'success');
+  assert.equal(manyDone.logs.at(-1).level, 'success');
+  assert.equal((await many('SGC_CLEAR_LOGS')).snapshot.logs.length, 0);
+  console.log('Runtime checks passed: profiles, pagination, selection, limits, confirmation, failures, Stop, privacy and bounded logs.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

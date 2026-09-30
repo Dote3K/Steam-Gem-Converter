@@ -3,9 +3,17 @@ let tabId;
 const status = document.querySelector('#status');
 const dialog = document.querySelector('#confirmation');
 let confirmedPlanId = null;
+let requests = Promise.resolve();
+let disconnected = false;
+const errorText = document.querySelector('#error');
+
+function showError(message) {
+  errorText.textContent = message;
+  errorText.hidden = false;
+}
 
 async function send(type, payload = {}) {
-  const response = await chrome.tabs.sendMessage(tabId, { type, ...payload });
+  const response = await (requests = requests.catch(() => {}).then(() => chrome.tabs.sendMessage(tabId, { type, ...payload })));
   if (!response?.ok) throw new Error(response?.error || 'Inventory runtime is unavailable.');
   return response.snapshot;
 }
@@ -27,9 +35,10 @@ function updateOptions(select, options, value) {
 function render(snapshot) {
   const inventory = snapshot.inventory;
   const running = snapshot.job.status === 'running' || snapshot.job.status === 'stopping';
-  status.textContent = inventory.error || (snapshot.job.status !== 'idle'
-    ? `Conversion ${snapshot.job.cancelRequested && snapshot.job.status === 'completed' ? 'stopped' : snapshot.job.status}: ${snapshot.job.success} successful, ${snapshot.job.failed} failed.`
-    : inventory.status === 'idle' ? 'Ready. Load your inventory to begin.' : `Inventory ${inventory.status}.`);
+  status.textContent = inventory.error || (inventory.status === 'loading' ? `Loading inventory page ${inventory.page || 1}…`
+    : snapshot.job.status !== 'idle'
+      ? `Conversion ${snapshot.job.cancelRequested && snapshot.job.status === 'completed' ? 'stopped' : snapshot.job.status}: ${snapshot.job.success} successful, ${snapshot.job.failed} failed.`
+      : inventory.status === 'idle' ? 'Ready. Load your inventory to begin.' : `Inventory ${inventory.status}.`);
   document.querySelector('#load').disabled = inventory.status === 'loading' || running;
   document.querySelector('#counts').textContent = `Inventory: ${inventory.totalCount} · Gemmable: ${inventory.gemmableCount}`;
   const game = document.querySelector('#game');
@@ -43,7 +52,7 @@ function render(snapshot) {
   filter.disabled = game.disabled || !snapshot.selection.filterEnabled;
   document.querySelector('#filter-mode').value = snapshot.selection.filterMode;
   document.querySelector('#filter-mode').disabled = filter.disabled;
-  document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount} · Planned: ${snapshot.plan.plannedCount}`;
+  document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.selectedCount} · Candidates: ${snapshot.plan.candidateCount} · Planned: ${snapshot.plan.plannedCount}`;
   const delay = document.querySelector('#delay');
   const maxItems = document.querySelector('#max-items');
   delay.disabled = running;
@@ -53,25 +62,53 @@ function render(snapshot) {
   document.querySelector('#convert').disabled = inventory.status !== 'loaded' || running || snapshot.plan.plannedCount === 0;
   document.querySelector('#stop').disabled = snapshot.job.status !== 'running';
   if (dialog.open && confirmedPlanId !== snapshot.plan.id) dialog.close();
+  document.querySelector('#clear-logs').disabled = false;
+  const progress = document.querySelector('#progress');
+  progress.max = snapshot.job.total || 1;
+  if (inventory.status === 'loading') progress.removeAttribute('value');
+  else progress.value = snapshot.job.processed;
+  document.querySelector('#progress-text').textContent = snapshot.job.status === 'idle' ? 'Idle'
+    : `${snapshot.job.processed} / ${snapshot.job.total}${snapshot.job.currentItem ? ` · ${snapshot.job.currentItem}` : ''}`;
+  const logs = document.querySelector('#logs');
+  const logKey = JSON.stringify(snapshot.logs);
+  if (logs.dataset.entries !== logKey) {
+    logs.replaceChildren(...snapshot.logs.slice().reverse().map(entry => {
+      const line = document.createElement('li');
+      line.className = entry.level;
+      line.textContent = `${new Date(entry.timestamp).toLocaleTimeString()} ${entry.message}`;
+      return line;
+    }));
+    logs.dataset.entries = logKey;
+  }
 }
 
 async function refresh() {
-  render(await send('SGC_GET_SNAPSHOT'));
+  const snapshot = await send('SGC_GET_SNAPSHOT');
+  render(snapshot);
+  if (disconnected) errorText.hidden = true;
+  disconnected = false;
+}
+
+async function poll() {
+  try {
+    await refresh();
+  } catch (error) {
+    disconnected = true;
+    dialog.close();
+    for (const control of document.querySelectorAll('main button, main input, main select')) control.disabled = true;
+    showError('Steam inventory is unavailable. Refresh the Steam tab after installing or reloading the extension.');
+  }
+  setTimeout(poll, 500);
 }
 
 async function command(type, payload = {}) {
   try {
     const snapshot = await send(type, payload);
     render(snapshot);
-    if (type === 'SGC_LOAD_INVENTORY' || type === 'SGC_START_CONVERSION') {
-      while (document.querySelector('#load').disabled) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await refresh();
-      }
-    }
+    errorText.hidden = true;
     return snapshot;
   } catch (error) {
-    status.textContent = error.message;
+    showError(error.message);
   }
 }
 
@@ -85,7 +122,7 @@ async function setConfig() {
   const delay = document.querySelector('#delay');
   const maxItems = document.querySelector('#max-items');
   if (!delay.checkValidity() || !maxItems.checkValidity()) {
-    status.textContent = 'Enter a valid delay and a positive max items value, or leave max items blank.';
+    showError('Enter a valid delay and a positive max items value, or leave max items blank.');
     return;
   }
   return command('SGC_SET_CONFIG', { config: { delayMs: Number(delay.value), maxItems: maxItems.value === '' ? null : Number(maxItems.value) } });
@@ -118,6 +155,7 @@ document.querySelector('#confirm-convert').addEventListener('click', () => {
 });
 dialog.addEventListener('close', () => { confirmedPlanId = null; });
 document.querySelector('#stop').addEventListener('click', () => void command('SGC_CANCEL_CONVERSION'));
+document.querySelector('#clear-logs').addEventListener('click', () => void command('SGC_CLEAR_LOGS'));
 
 async function init() {
   try {
@@ -125,6 +163,7 @@ async function init() {
     if (!tab?.id) throw new Error('Open your Steam Community inventory.');
     tabId = tab.id;
     await refresh();
+    setTimeout(poll, 500);
   } catch (error) {
     status.textContent = error.message.includes('Receiving end does not exist')
       ? 'Open your Steam inventory. If it is already open, refresh the tab after installing the extension.'
