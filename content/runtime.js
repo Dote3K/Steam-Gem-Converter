@@ -15,6 +15,21 @@
     SGC_START_CONVERSION: ['confirmed', 'planId'], SGC_CANCEL_CONVERSION: [], SGC_CLEAR_LOGS: []
   };
   let endDelay = null;
+  const settingsReady = restoreSettings();
+
+  async function restoreSettings() {
+    try {
+      const saved = await chrome.storage.local.get(['delayMs', 'maxItems']);
+      const config = {
+        delayMs: Object.hasOwn(saved, 'delayMs') ? saved.delayMs : state.config.delayMs,
+        maxItems: Object.hasOwn(saved, 'maxItems') ? saved.maxItems : state.config.maxItems
+      };
+      validateConfig(config);
+      state.config = config;
+    } catch {
+      log('warn', 'Could not restore settings. Default delay and max items are in use.');
+    }
+  }
 
   function log(level, message) {
     state.logs.push({ timestamp: Date.now(), level, message });
@@ -179,6 +194,7 @@
   }
 
   async function handle(message) {
+    await settingsReady;
     if (!message || typeof message !== 'object' || Array.isArray(message) || !Object.hasOwn(commandFields, message.type)) throw new Error('Invalid command.');
     if (Object.keys(message).some(key => key !== 'type' && !commandFields[message.type].includes(key))) throw new Error('Invalid command payload.');
     switch (message.type) {
@@ -217,6 +233,11 @@
         validateConfig(config);
         state.config = config;
         state.planId = crypto.randomUUID();
+        try {
+          await chrome.storage.local.set(config);
+        } catch {
+          throw new Error('Settings updated for this tab, but could not be saved.');
+        }
         return snapshot();
       }
       case 'SGC_START_CONVERSION': {

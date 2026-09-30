@@ -6,7 +6,7 @@ const vm = require('node:vm');
 const { webcrypto } = require('node:crypto');
 const root = path.join(__dirname, '..');
 
-function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId = '76561198000000000', cookie = 'sessionid=synthetic-session', fetch } = {}) {
+function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId = '76561198000000000', cookie = 'sessionid=synthetic-session', fetch, storage = { get: async () => ({}), set: async () => {} } } = {}) {
   let listener;
   const listeners = new Set();
   const window = {
@@ -23,7 +23,7 @@ function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId 
     window, location: { origin: 'https://steamcommunity.com', pathname },
     document: { cookie }, crypto: webcrypto, setTimeout, clearTimeout,
     URL, URLSearchParams, fetch,
-    chrome: { runtime: { id: 'test-extension', getURL: p => `chrome-extension://test-extension/${p}`, onMessage: { addListener: fn => { listener = fn; } } } }
+    chrome: { storage: { local: storage }, runtime: { id: 'test-extension', getURL: p => `chrome-extension://test-extension/${p}`, onMessage: { addListener: fn => { listener = fn; } } } }
   });
   const manifest = JSON.parse(fs.readFileSync(path.join(root, 'manifest.json'), 'utf8'));
   for (const file of manifest.content_scripts.find(script => script.world === 'ISOLATED').js) {
@@ -204,5 +204,21 @@ async function until(send, predicate) {
   assert.equal(manyDone.logs[0].level, 'success');
   assert.equal(manyDone.logs.at(-1).level, 'success');
   assert.equal((await many('SGC_CLEAR_LOGS')).snapshot.logs.length, 0);
+  const savedSettings = {};
+  const storage = { get: async () => ({ ...savedSettings }), set: async config => { Object.assign(savedSettings, config); } };
+  await runtime({ storage })('SGC_SET_CONFIG', { config: { delayMs: 125, maxItems: null } });
+  const restored = (await runtime({ storage })('SGC_GET_SNAPSHOT')).snapshot;
+  assert.deepEqual(restored.config, { delayMs: 125, maxItems: null });
+  assert.deepEqual(Object.keys(savedSettings).sort(), ['delayMs', 'maxItems']);
+  let releaseSettings;
+  const deferredSettings = runtime({ storage: { ...storage, get: () => new Promise(resolve => { releaseSettings = resolve; }) } });
+  const pendingConfig = deferredSettings('SGC_SET_CONFIG', { config: { delayMs: 250, maxItems: 5 } });
+  releaseSettings({ delayMs: 125, maxItems: null });
+  assert.deepEqual((await pendingConfig).snapshot.config, { delayMs: 250, maxItems: 5 });
+  const unwritable = runtime({ storage: { get: async () => ({}), set: async () => { throw new Error('Unavailable'); } } });
+  assert.equal((await unwritable('SGC_SET_CONFIG', { config: { delayMs: 25 } })).ok, false);
+  assert.equal((await unwritable('SGC_GET_SNAPSHOT')).snapshot.config.delayMs, 25);
+  const corrupt = await runtime({ storage: { get: async () => ({ delayMs: -1 }), set: async () => {} } })('SGC_GET_SNAPSHOT');
+  assert.equal(corrupt.snapshot.logs[0].level, 'warn');
   console.log('Runtime checks passed: profiles, pagination, selection, limits, confirmation, failures, Stop, privacy and bounded logs.');
 })().catch(error => { console.error(error); process.exitCode = 1; });
