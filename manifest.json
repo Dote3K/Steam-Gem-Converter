@@ -7,5 +7,19 @@
   "action": {
     "default_title": "Steam Gem Converter",
     "default_popup": "popup/popup.html"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://steamcommunity.com/id/*/inventory*", "https://steamcommunity.com/profiles/*/inventory*"],
+      "js": ["bridge/page-context.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://steamcommunity.com/id/*/inventory*", "https://steamcommunity.com/profiles/*/inventory*"],
+      "js": ["content/runtime.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ]
 }
