@@ -12,8 +12,10 @@
   <main>
     <p id="status" role="status">Open your Steam Community inventory to convert items into gems.</p>
     <p id="error" class="warning" role="alert" hidden></p>
-    <button id="load" type="button" disabled>Load inventory</button>
-    <p id="counts">Inventory: 0 · Gemmable: 0</p>
+    <div class="inventory-summary">
+      <p id="counts">Inventory: 0 · Gemmable: 0</p>
+      <button id="load" type="button" disabled>Load inventory</button>
+    </div>
     <label>Game<select id="game" disabled><option value="">Load inventory first</option></select></label>
     <div class="settings">
       <label>Delay (ms)<input id="delay" type="number" min="0" max="2147483647" step="1" value="50" required disabled></label>
@@ -25,10 +27,14 @@
       <label>Selection<select id="filter-value" disabled></select></label>
     </div>
     <p id="selection-count">Selected: 0</p>
-    <button id="convert" type="button" disabled>Convert</button>
-    <button id="stop" type="button" disabled>Stop</button>
-    <progress id="progress" value="0" max="1" aria-label="Conversion progress"></progress>
-    <p id="progress-text">Idle</p>
+    <div class="actions">
+      <button id="convert" type="button" disabled>Convert</button>
+      <button id="stop" type="button" disabled>Stop</button>
+    </div>
+    <div class="job-progress" hidden>
+      <progress id="progress" value="0" max="1" aria-label="Conversion progress"></progress>
+      <p id="progress-text">Idle</p>
+    </div>
     <section aria-labelledby="activity-title">
       <div class="activity-heading"><h2 id="activity-title">Activity</h2><button id="clear-logs" type="button" disabled>Clear</button></div>
       <ol id="logs" aria-label="Activity log"></ol>

@@ -63,6 +63,7 @@ function render(snapshot) {
   document.querySelector('#stop').disabled = snapshot.job.status !== 'running';
   if (dialog.open && confirmedPlanId !== snapshot.plan.id) dialog.close();
   document.querySelector('#clear-logs').disabled = false;
+  document.querySelector('.job-progress').hidden = snapshot.job.status === 'idle' && inventory.status !== 'loading';
   const progress = document.querySelector('#progress');
   progress.max = snapshot.job.total || 1;
   if (inventory.status === 'loading') progress.removeAttribute('value');
