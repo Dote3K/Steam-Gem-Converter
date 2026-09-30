@@ -26,9 +26,9 @@ function updateOptions(select, options, value) {
 
 function render(snapshot) {
   const inventory = snapshot.inventory;
-  const running = snapshot.job.status === 'running';
+  const running = snapshot.job.status === 'running' || snapshot.job.status === 'stopping';
   status.textContent = inventory.error || (snapshot.job.status !== 'idle'
-    ? `Conversion ${snapshot.job.status}: ${snapshot.job.success} successful, ${snapshot.job.failed} failed.`
+    ? `Conversion ${snapshot.job.cancelRequested && snapshot.job.status === 'completed' ? 'stopped' : snapshot.job.status}: ${snapshot.job.success} successful, ${snapshot.job.failed} failed.`
     : inventory.status === 'idle' ? 'Ready. Load your inventory to begin.' : `Inventory ${inventory.status}.`);
   document.querySelector('#load').disabled = inventory.status === 'loading' || running;
   document.querySelector('#counts').textContent = `Inventory: ${inventory.totalCount} · Gemmable: ${inventory.gemmableCount}`;
@@ -51,6 +51,7 @@ function render(snapshot) {
   if (document.activeElement !== delay) delay.value = snapshot.config.delayMs;
   if (document.activeElement !== maxItems) maxItems.value = snapshot.config.maxItems ?? '';
   document.querySelector('#convert').disabled = inventory.status !== 'loaded' || running || snapshot.plan.plannedCount === 0;
+  document.querySelector('#stop').disabled = snapshot.job.status !== 'running';
   if (dialog.open && confirmedPlanId !== snapshot.plan.id) dialog.close();
 }
 
@@ -116,6 +117,7 @@ document.querySelector('#confirm-convert').addEventListener('click', () => {
   if (planId) void command('SGC_START_CONVERSION', { confirmed: true, planId });
 });
 dialog.addEventListener('close', () => { confirmedPlanId = null; });
+document.querySelector('#stop').addEventListener('click', () => void command('SGC_CANCEL_CONVERSION'));
 
 async function init() {
   try {

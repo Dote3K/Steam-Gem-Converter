@@ -11,8 +11,9 @@
   const commandFields = {
     SGC_PING: [], SGC_GET_SNAPSHOT: [], SGC_LOAD_INVENTORY: [],
     SGC_SET_SELECTION: ['selection'], SGC_SET_CONFIG: ['config'],
-    SGC_START_CONVERSION: ['confirmed', 'planId']
+    SGC_START_CONVERSION: ['confirmed', 'planId'], SGC_CANCEL_CONVERSION: []
   };
+  let endDelay = null;
 
   async function getPage() {
     const match = location.pathname.match(/^\/(profiles\/\d{17}|id\/[^/]+)\/inventory\/?$/);
@@ -67,7 +68,7 @@
   }
 
   function isRunning() {
-    return state.job.status === 'running';
+    return state.job.status === 'running' || state.job.status === 'stopping';
   }
 
   function validateConfig(config) {
@@ -117,10 +118,11 @@
     const job = state.job = {
       status: 'running', total: candidates.length, processed: 0, success: 0,
       failed: 0, currentItem: null, error: null,
-      startedAt: Date.now(), finishedAt: null
+      startedAt: Date.now(), finishedAt: null, cancelRequested: false
     };
     try {
       for (const item of candidates) {
+        if (job.cancelRequested) break;
         job.currentItem = item.itemName;
         try {
           const { gooValue, appId } = await SGC.api.getGooValue(item);
@@ -132,7 +134,14 @@
           job.error = error.message;
         }
         job.processed++;
-        if (job.processed < job.total) await new Promise(resolve => setTimeout(resolve, state.config.delayMs));
+        job.currentItem = null;
+        if (job.processed < job.total && !job.cancelRequested) {
+          await new Promise(resolve => {
+            const timeout = setTimeout(resolve, state.config.delayMs);
+            endDelay = () => { clearTimeout(timeout); resolve(); };
+          });
+          endDelay = null;
+        }
       }
       job.status = 'completed';
     } catch (error) {
@@ -200,6 +209,12 @@
         void runConvert(candidates, sessionId);
         return snapshot();
       }
+      case 'SGC_CANCEL_CONVERSION':
+        if (!isRunning()) throw new Error('No conversion is running.');
+        state.job.cancelRequested = true;
+        state.job.status = 'stopping';
+        endDelay?.();
+        return snapshot();
       default:
         throw new Error('Unknown command.');
     }
