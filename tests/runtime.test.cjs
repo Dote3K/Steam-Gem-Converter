@@ -96,5 +96,10 @@ async function until(send, predicate) {
   assert.equal(grouped.plan.candidateCount, 2);
   assert.equal((await paged('SGC_SET_SELECTION', { selection: { appId: 570 } })).snapshot.plan.candidateCount, 1);
   assert.equal((await paged('SGC_SET_SELECTION', { selection: { appId: 999 } })).ok, false);
+  const itemFilter = await paged('SGC_SET_SELECTION', { selection: { appId: 440, filterEnabled: true } });
+  assert.equal(itemFilter.snapshot.filterOptions[0].count, 2);
+  assert.equal(itemFilter.snapshot.plan.candidateCount, 2);
+  assert.equal((await paged('SGC_SET_SELECTION', { selection: { filterKey: 'missing' } })).ok, false);
+  assert.equal((await paged('SGC_GET_SNAPSHOT')).snapshot.selection.filterKey, '100_0');
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

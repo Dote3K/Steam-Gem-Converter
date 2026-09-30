@@ -3,7 +3,7 @@
   const state = {
     page: null,
     inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
-    selection: { appId: null }
+    selection: { appId: null, filterEnabled: false, filterKey: null }
   };
 
   async function getPage() {
@@ -40,7 +40,13 @@
   }
 
   function getCandidates() {
-    return state.inventory.gemmableItems.filter(item => item.gooAppId === state.selection.appId);
+    return state.inventory.gemmableItems.filter(item =>
+      item.gooAppId === state.selection.appId &&
+      (!state.selection.filterEnabled || item.itemKey === state.selection.filterKey));
+  }
+
+  function getFilterOptions(selection = state.selection) {
+    return SGC.inventory.filterGroups(state.inventory.gemmableItems.filter(item => item.gooAppId === selection.appId));
   }
 
   function rebuildSelection() {
@@ -48,6 +54,8 @@
     if (!state.inventory.games.some(game => game.appId === state.selection.appId)) {
       state.selection.appId = state.inventory.games[0]?.appId || null;
     }
+    const options = getFilterOptions();
+    if (!options.some(option => option.key === state.selection.filterKey)) state.selection.filterKey = options[0]?.key || null;
   }
 
   function snapshot() {
@@ -61,6 +69,7 @@
         games: state.inventory.games
       },
       selection: { ...state.selection },
+      filterOptions: getFilterOptions(),
       plan: { candidateCount: getCandidates().length }
     };
   }
@@ -94,12 +103,16 @@
         return snapshot();
       case 'SGC_SET_SELECTION': {
         if (state.inventory.status !== 'loaded') throw new Error('Load your inventory first.');
-        const selection = message.selection;
-        if (!selection || Object.keys(selection).some(key => key !== 'appId') ||
-            !Number.isSafeInteger(selection.appId) || !state.inventory.games.some(game => game.appId === selection.appId)) {
-          throw new Error('Select a valid game.');
-        }
-        state.selection.appId = selection.appId;
+        const patch = message.selection;
+        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['appId', 'filterEnabled', 'filterKey'].includes(key))) throw new Error('Invalid selection.');
+        const selection = { ...state.selection, ...patch };
+        if (!Number.isSafeInteger(selection.appId) || !state.inventory.games.some(game => game.appId === selection.appId) ||
+            typeof selection.filterEnabled !== 'boolean' || (selection.filterKey !== null && typeof selection.filterKey !== 'string')) throw new Error('Invalid selection.');
+        if (selection.appId !== state.selection.appId && !('filterKey' in patch)) selection.filterKey = null;
+        const options = getFilterOptions(selection);
+        if (selection.filterKey !== null && !options.some(option => option.key === selection.filterKey)) throw new Error('Select a valid item.');
+        selection.filterKey ??= options[0]?.key || null;
+        state.selection = selection;
         return snapshot();
       }
       default:

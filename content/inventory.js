@@ -202,5 +202,14 @@ globalThis.SGC = {};
     })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
   }
 
-  SGC.inventory = { join, canTurnIntoGems, games };
+  function filterGroups(items) {
+    const groups = new Map();
+    for (const item of items) {
+      if (!groups.has(item.itemKey)) groups.set(item.itemKey, { key: item.itemKey, label: item.itemName, count: 0 });
+      groups.get(item.itemKey).count++;
+    }
+    return Array.from(groups.values()).sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+  }
+
+  SGC.inventory = { join, canTurnIntoGems, games, filterGroups };
 })();

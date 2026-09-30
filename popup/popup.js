@@ -30,6 +30,12 @@ function render(snapshot) {
   const game = document.querySelector('#game');
   updateOptions(game, inventory.games.map(g => ({ value: String(g.appId), label: `${g.name} · ${g.count} items` })), snapshot.selection.appId);
   game.disabled = inventory.status !== 'loaded' || !inventory.games.length;
+  document.querySelector('#filter-enabled').checked = snapshot.selection.filterEnabled;
+  document.querySelector('#filter-enabled').disabled = game.disabled;
+  document.querySelector('#filter-controls').hidden = !snapshot.selection.filterEnabled;
+  const filter = document.querySelector('#filter-value');
+  updateOptions(filter, snapshot.filterOptions.map(option => ({ value: option.key, label: `${option.label} · ${option.count} items` })), snapshot.selection.filterKey);
+  filter.disabled = game.disabled || !snapshot.selection.filterEnabled;
   document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount}`;
 }
 
@@ -53,6 +59,8 @@ async function command(type, payload = {}) {
 
 document.querySelector('#load').addEventListener('click', () => void command('SGC_LOAD_INVENTORY'));
 document.querySelector('#game').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { appId: Number(event.target.value) } }));
+document.querySelector('#filter-enabled').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterEnabled: event.target.checked } }));
+document.querySelector('#filter-value').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterKey: event.target.value } }));
 
 async function init() {
   try {
