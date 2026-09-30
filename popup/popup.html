@@ -14,6 +14,10 @@
     <button id="load" type="button" disabled>Load inventory</button>
     <p id="counts">Inventory: 0 · Gemmable: 0</p>
     <label>Game<select id="game" disabled><option value="">Load inventory first</option></select></label>
+    <div class="settings">
+      <label>Delay (ms)<input id="delay" type="number" min="0" max="2147483647" step="1" value="50" required disabled></label>
+      <label>Max items<input id="max-items" type="number" min="1" step="1" value="1000" placeholder="No limit" disabled></label>
+    </div>
     <label class="checkbox"><input id="filter-enabled" type="checkbox" disabled>Only convert a selected item or type</label>
     <div id="filter-controls" hidden>
       <label>Filter by<select id="filter-mode" disabled><option value="item">Specific item</option><option value="type">Item type</option></select></label>

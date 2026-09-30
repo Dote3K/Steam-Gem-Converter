@@ -38,7 +38,13 @@ function render(snapshot) {
   filter.disabled = game.disabled || !snapshot.selection.filterEnabled;
   document.querySelector('#filter-mode').value = snapshot.selection.filterMode;
   document.querySelector('#filter-mode').disabled = filter.disabled;
-  document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount}`;
+  document.querySelector('#selection-count').textContent = `Selected: ${snapshot.plan.candidateCount} · Planned: ${snapshot.plan.plannedCount}`;
+  const delay = document.querySelector('#delay');
+  const maxItems = document.querySelector('#max-items');
+  delay.disabled = false;
+  maxItems.disabled = false;
+  if (document.activeElement !== delay) delay.value = snapshot.config.delayMs;
+  if (document.activeElement !== maxItems) maxItems.value = snapshot.config.maxItems ?? '';
 }
 
 async function refresh() {
@@ -64,6 +70,19 @@ document.querySelector('#game').addEventListener('change', event => void command
 document.querySelector('#filter-enabled').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterEnabled: event.target.checked } }));
 document.querySelector('#filter-value').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterKey: event.target.value } }));
 document.querySelector('#filter-mode').addEventListener('change', event => void command('SGC_SET_SELECTION', { selection: { filterMode: event.target.value } }));
+
+async function setConfig() {
+  const delay = document.querySelector('#delay');
+  const maxItems = document.querySelector('#max-items');
+  if (!delay.checkValidity() || !maxItems.checkValidity()) {
+    status.textContent = 'Enter a valid delay and a positive max items value, or leave max items blank.';
+    return;
+  }
+  return command('SGC_SET_CONFIG', { config: { delayMs: Number(delay.value), maxItems: maxItems.value === '' ? null : Number(maxItems.value) } });
+}
+
+document.querySelector('#delay').addEventListener('change', () => void setConfig());
+document.querySelector('#max-items').addEventListener('change', () => void setConfig());
 
 async function init() {
   try {

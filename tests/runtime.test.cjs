@@ -116,5 +116,13 @@ async function until(send, predicate) {
   assert.equal(typeFilter.snapshot.plan.candidateCount, 3);
   assert.equal((await types('SGC_SET_SELECTION', { selection: { filterKey: 'foil trading card' } })).snapshot.plan.candidateCount, 1);
   assert.equal((await types('SGC_SET_SELECTION', { selection: { filterMode: 'invalid' } })).ok, false);
+  assert.equal((await types('SGC_SET_SELECTION', { selection: { filterEnabled: false } })).snapshot.plan.candidateCount, 4);
+  const limited = await types('SGC_SET_CONFIG', { config: { delayMs: 0, maxItems: 2 } });
+  assert.equal(limited.snapshot.plan.plannedCount, 2);
+  assert.equal(limited.snapshot.config.delayMs, 0);
+  assert.equal((await types('SGC_SET_CONFIG', { config: { maxItems: null } })).snapshot.plan.plannedCount, 4);
+  assert.equal((await types('SGC_SET_CONFIG', { config: { maxItems: 0 } })).ok, false);
+  assert.equal((await types('SGC_SET_CONFIG', { config: { delayMs: -1 } })).ok, false);
+  assert.equal((await types('SGC_SET_CONFIG', { config: { delayMs: 0.5 } })).ok, false);
   console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

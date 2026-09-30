@@ -3,7 +3,8 @@
   const state = {
     page: null,
     inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [], games: [] },
-    selection: { appId: null, filterEnabled: false, filterMode: 'item', filterKey: null }
+    selection: { appId: null, filterEnabled: false, filterMode: 'item', filterKey: null },
+    config: { delayMs: 50, maxItems: 1000 }
   };
 
   async function getPage() {
@@ -58,7 +59,15 @@
     if (!options.some(option => option.key === state.selection.filterKey)) state.selection.filterKey = options[0]?.key || null;
   }
 
+  function validateConfig(config) {
+    if (!Number.isInteger(config.delayMs) || config.delayMs < 0 || config.delayMs > 2147483647 ||
+        (config.maxItems !== null && (!Number.isSafeInteger(config.maxItems) || config.maxItems < 1))) {
+      throw new Error('Delay must be a nonnegative integer; max items must be a positive integer or blank for no limit.');
+    }
+  }
+
   function snapshot() {
+    const candidateCount = getCandidates().length;
     return {
       page: { ready: Boolean(state.page), steamId: state.page?.steamId },
       inventory: {
@@ -70,7 +79,8 @@
       },
       selection: { ...state.selection },
       filterOptions: getFilterOptions(),
-      plan: { candidateCount: getCandidates().length }
+      config: { ...state.config },
+      plan: { candidateCount, plannedCount: Math.min(candidateCount, state.config.maxItems ?? Infinity) }
     };
   }
 
@@ -114,6 +124,14 @@
         if (selection.filterKey !== null && !options.some(option => option.key === selection.filterKey)) throw new Error('Select a valid item.');
         selection.filterKey ??= options[0]?.key || null;
         state.selection = selection;
+        return snapshot();
+      }
+      case 'SGC_SET_CONFIG': {
+        const patch = message.config;
+        if (!patch || typeof patch !== 'object' || Object.keys(patch).some(key => !['delayMs', 'maxItems'].includes(key))) throw new Error('Invalid settings.');
+        const config = { ...state.config, ...patch };
+        validateConfig(config);
+        state.config = config;
         return snapshot();
       }
       default:
