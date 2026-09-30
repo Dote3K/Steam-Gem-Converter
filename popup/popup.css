@@ -6,3 +6,7 @@ header { border-bottom: 1px solid #334155; }
 h1 { font-size: 17px; margin: 0; }
 p { margin: 0 0 12px; }
 .warning { color: #fcd34d; }
+button, input, select { font: inherit; border: 1px solid #475569; border-radius: 6px; background: #1e293b; color: inherit; padding: 7px 10px; }
+button { cursor: pointer; margin-bottom: 10px; }
+button:disabled, input:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }

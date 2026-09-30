@@ -1,6 +1,9 @@
 (() => {
   'use strict';
-  const state = { page: null };
+  const state = {
+    page: null,
+    inventory: { status: 'idle', error: null, allItems: [], gemmableItems: [] }
+  };
 
   async function getPage() {
     const match = location.pathname.match(/^\/(profiles\/\d{17}|id\/[^/]+)\/inventory\/?$/);
@@ -35,13 +38,44 @@
     return state.page;
   }
 
+  function snapshot() {
+    return {
+      page: { ready: Boolean(state.page), steamId: state.page?.steamId },
+      inventory: {
+        status: state.inventory.status,
+        error: state.inventory.error,
+        totalCount: state.inventory.allItems.length,
+        gemmableCount: state.inventory.gemmableItems.length
+      }
+    };
+  }
+
+  async function loadInventory() {
+    try {
+      const page = state.page || await getPage();
+      SGC.api.getSessionId();
+      const items = await SGC.api.fetchInventory(page.steamId);
+      state.inventory.allItems = items;
+      state.inventory.gemmableItems = items.filter(SGC.inventory.canTurnIntoGems);
+      state.inventory.status = 'loaded';
+    } catch (error) {
+      state.inventory.status = 'error';
+      state.inventory.error = error.message;
+    }
+  }
+
   async function handle(message) {
     if (!message || typeof message !== 'object') throw new Error('Invalid command.');
     switch (message.type) {
       case 'SGC_PING':
       case 'SGC_GET_SNAPSHOT':
         if (!state.page) await getPage();
-        return { page: { ready: true, steamId: state.page.steamId } };
+        return snapshot();
+      case 'SGC_LOAD_INVENTORY':
+        if (state.inventory.status === 'loading') throw new Error('Inventory is already loading.');
+        state.inventory = { status: 'loading', error: null, allItems: [], gemmableItems: [] };
+        void loadInventory();
+        return snapshot();
       default:
         throw new Error('Unknown command.');
     }

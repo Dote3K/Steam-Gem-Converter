@@ -33,6 +33,27 @@ function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId 
     listener({ type, ...payload }, { id: 'test-extension', url: 'chrome-extension://test-extension/popup/popup.html' }, resolve);
   });
 }
+function inventoryPage(ids = ['1', '2']) {
+  return {
+    success: 1,
+    assets: ids.map(assetid => ({ assetid, classid: assetid === '3' ? '200' : '100', instanceid: '0' })),
+    descriptions: [
+      { classid: '100', instanceid: '0', name: 'Example Card', type: 'Example Game Trading Card', owner_actions: [{ link: "javascript:GetGooValue('%contextid%', '%assetid%', 440, 2, 0)" }] },
+      { classid: '200', instanceid: '0', name: 'Another Card', type: 'Another Game Trading Card', owner_actions: [{ link: "javascript:GetGooValue('%contextid%', '%assetid%', 570, 2, 0)" }] }
+    ]
+  };
+}
+
+const jsonResponse = data => ({ ok: true, json: async () => data });
+async function until(send, predicate) {
+  for (let i = 0; i < 200; i++) {
+    const response = await send('SGC_GET_SNAPSHOT');
+    if (predicate(response.snapshot)) return response.snapshot;
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error('Runtime did not reach the expected state.');
+}
+
 
 (async () => {
   const numeric = await runtime()('SGC_GET_SNAPSHOT');
@@ -43,5 +64,20 @@ function runtime({ pathname = '/profiles/76561198000000000/inventory/', steamId 
   assert.equal(invalid.ok, false);
   const unsupported = await runtime({ pathname: '/id/example/' })('SGC_GET_SNAPSHOT');
   assert.equal(unsupported.ok, false);
-  console.log('Runtime checks passed: numeric/vanity profiles and invalid profile boundaries.');
+  let release;
+  const send = runtime({ fetch: () => new Promise(resolve => { release = () => resolve(jsonResponse(inventoryPage())); }) });
+  const ack = await send('SGC_LOAD_INVENTORY');
+  assert.equal(ack.snapshot.inventory.status, 'loading');
+  release();
+  const loaded = await until(send, s => s.inventory.status === 'loaded');
+  assert.equal(loaded.inventory.totalCount, 2);
+  assert.equal(loaded.inventory.gemmableCount, 2);
+  assert.equal('allItems' in loaded.inventory, false);
+  const signedOut = runtime({ cookie: '' });
+  await signedOut('SGC_LOAD_INVENTORY');
+  assert.equal((await until(signedOut, s => s.inventory.status === 'error')).inventory.error.includes('Sign in'), true);
+  const failed = runtime({ fetch: async () => ({ ok: false, status: 429 }) });
+  await failed('SGC_LOAD_INVENTORY');
+  assert.equal((await until(failed, s => s.inventory.status === 'error')).inventory.error.includes('429'), true);
+  console.log('Runtime checks passed: profiles, load ACK, inventory counts, privacy, login and HTTP errors.');
 })().catch(error => { console.error(error); process.exitCode = 1; });

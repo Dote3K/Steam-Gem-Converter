@@ -9,12 +9,31 @@ async function send(type, payload = {}) {
 }
 
 function render(snapshot) {
-  status.textContent = `Ready on Steam inventory ${snapshot.page.steamId}.`;
+  const inventory = snapshot.inventory;
+  status.textContent = inventory.error || (inventory.status === 'idle' ? 'Ready. Load your inventory to begin.' : `Inventory ${inventory.status}.`);
+  document.querySelector('#load').disabled = inventory.status === 'loading';
+  document.querySelector('#counts').textContent = `Inventory: ${inventory.totalCount} · Gemmable: ${inventory.gemmableCount}`;
 }
 
 async function refresh() {
   render(await send('SGC_GET_SNAPSHOT'));
 }
+
+async function command(type, payload = {}) {
+  try {
+    render(await send(type, payload));
+    if (type === 'SGC_LOAD_INVENTORY') {
+      while (document.querySelector('#load').disabled) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await refresh();
+      }
+    }
+  } catch (error) {
+    status.textContent = error.message;
+  }
+}
+
+document.querySelector('#load').addEventListener('click', () => void command('SGC_LOAD_INVENTORY'));
 
 async function init() {
   try {
