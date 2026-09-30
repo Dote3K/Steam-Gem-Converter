@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Steam Gem Converter",
+  "version": "1.0.0",
+  "description": "Convert selected Steam inventory items into gems.",
+  "minimum_chrome_version": "111",
+  "action": {
+    "default_title": "Steam Gem Converter",
+    "default_popup": "popup/popup.html"
+  }
+}

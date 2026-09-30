@@ -1,0 +1,8 @@
+:root { color-scheme: dark; font: 13px/1.5 system-ui, sans-serif; color: #e5e7eb; background: #0f172a; }
+* { box-sizing: border-box; }
+body { width: 430px; margin: 0; max-height: 580px; overflow-y: auto; }
+header, main { padding: 14px; }
+header { border-bottom: 1px solid #334155; }
+h1 { font-size: 17px; margin: 0; }
+p { margin: 0 0 12px; }
+.warning { color: #fcd34d; }
